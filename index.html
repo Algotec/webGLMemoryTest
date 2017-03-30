@@ -40,18 +40,36 @@
 
     <button id="start">Increase Memory</button>
     <script>
-        var canvas, gl, sampleImage, textures;
+        var canvas, gl, sampleImage, textures, loseContextExt, timeoutMemoryLoop;
         var WIDTH = 1024, HEIGHT = 1024;
         var isIE = /*@cc_on!@*/false || !!document.documentMode;
         var isEdge = !isIE && !!window.StyleMedia;
+        sampleImage = new Uint8Array(WIDTH * HEIGHT * 4);
+
+        initWebGL();
+
 
         document.querySelector("#start").addEventListener('click', function (ev) {
-            canvas = document.createElement("canvas");
-            gl = (isEdge || isIE) ? canvas.getContext("experimental-webgl") : canvas.getContext("webgl") ;
-            sampleImage = new Uint8Array(WIDTH * HEIGHT * 4);
-            textures = [];
             increaseMemoryLoop();
         });
+
+        function initWebGL() {
+            canvas = document.createElement("canvas");
+            canvas.addEventListener("webglcontextlost", function(e) {
+                console.log('context lost');
+                e.preventDefault();
+                clearTimeout(timeoutMemoryLoop);
+                handleError(gl.CONTEXT_LOST_WEBGL);
+                loseContextExt.restoreContext();
+            }, false);
+            canvas.addEventListener("webglcontextrestored", function (event) {
+                console.log('context restored');
+                initWebGL();
+            }, false);
+            gl = (isEdge || isIE) ? canvas.getContext("experimental-webgl") : canvas.getContext("webgl") ;
+            loseContextExt = gl.getExtension("WEBGL_lose_context");
+            textures = [];
+        }
 
         function increaseMemoryLoop() {
             var texture = gl.createTexture();
@@ -63,13 +81,16 @@
 
             if (error === gl.NO_ERROR) {
                 textures.push(texture);
-                setTimeout(increaseMemoryLoop, 0);
+                timeoutMemoryLoop = setTimeout(increaseMemoryLoop, 0);
             } else {
-                alert('WebGL out of memory after ' + textures.length * WIDTH * HEIGHT * 4 + ' bytes. Error (' + translateGLError(error) + ")");
-                releaseMemory();
+                handleError(error);
             }
         }
 
+        function handleError(error) {
+            alert('WebGL out of memory after ' + textures.length * WIDTH * HEIGHT * 4 + ' bytes. Error (' + translateGLError(error) + ")");
+            releaseMemory();
+        }
         function releaseMemory() {
             textures.forEach(function (texture) {
                 gl.deleteTexture(texture);
