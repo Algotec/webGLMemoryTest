@@ -40,34 +40,36 @@
 
     <button id="start">Increase Memory</button>
     <script>
-        var canvas, gl, sampleImage, textures, loseContextExt, timeoutMemoryLoop;
+        var canvas, gl, sampleImage, textures, timeoutMemoryLoop;
         var WIDTH = 1024, HEIGHT = 1024;
         var isIE = /*@cc_on!@*/false || !!document.documentMode;
         var isEdge = !isIE && !!window.StyleMedia;
+        var isChrome = !!self.chrome && !!self.chrome.webstore;
         sampleImage = new Uint8Array(WIDTH * HEIGHT * 4);
 
-        initWebGL();
+        initializeResources();
 
+        if (isChrome) {
+            canvas.addEventListener("webglcontextlost", function(e) {
+                console.log('context lost');
+                e.preventDefault();
+                clearTimeout(timeoutMemoryLoop);
+                showError("CONTEXT_LOST_WEBGL"); //  Context is lost, gl may be undefined
+            }, false);
+
+            canvas.addEventListener("webglcontextrestored", function (event) {
+                console.log('context restored');
+                initializeResources();
+            }, false);
+        }
 
         document.querySelector("#start").addEventListener('click', function (ev) {
             increaseMemoryLoop();
         });
 
-        function initWebGL() {
+        function initializeResources() {
             canvas = document.createElement("canvas");
-            canvas.addEventListener("webglcontextlost", function(e) {
-                console.log('context lost');
-                e.preventDefault();
-                clearTimeout(timeoutMemoryLoop);
-                handleError(gl.CONTEXT_LOST_WEBGL);
-                loseContextExt.restoreContext();
-            }, false);
-            canvas.addEventListener("webglcontextrestored", function (event) {
-                console.log('context restored');
-                initWebGL();
-            }, false);
             gl = (isEdge || isIE) ? canvas.getContext("experimental-webgl") : canvas.getContext("webgl") ;
-            loseContextExt = gl.getExtension("WEBGL_lose_context");
             textures = [];
         }
 
@@ -83,13 +85,14 @@
                 textures.push(texture);
                 timeoutMemoryLoop = setTimeout(increaseMemoryLoop, 0);
             } else {
-                handleError(error);
+                showError(translateGLError(error));
+                releaseMemory();
+                initializeResources();
             }
         }
 
-        function handleError(error) {
-            alert('WebGL out of memory after ' + textures.length * WIDTH * HEIGHT * 4 + ' bytes. Error (' + translateGLError(error) + ")");
-            releaseMemory();
+        function showError(error) {
+            alert('WebGL out of memory after ' + textures.length * WIDTH * HEIGHT * 4 + ' bytes. Error (' + error + ")");
         }
         function releaseMemory() {
             textures.forEach(function (texture) {
